@@ -14,25 +14,26 @@ if [ ! "${INTERFACE}" ] ; then
 fi
 
 # Default values
-true ${SUBNET:=192.168.254.0}
-true ${AP_ADDR:=192.168.254.1}
-true ${PRI_DNS:=8.8.8.8}
-true ${SEC_DNS:=8.8.4.4}
-true ${SSID:=raspberry}
-true ${CHANNEL:=11}
-true ${WPA_PASSPHRASE:=passw0rd}
-true ${HW_MODE:=g}
+HW_MODE=g
 
 if [ ! -f "/etc/hostapd.conf" ] ; then
     cat > "/etc/hostapd.conf" <<EOF
 interface=${INTERFACE}
 ${DRIVER+"driver=${DRIVER}"}
+auth_server_addr=freeradius
+auth_server_port=1812
+auth_server_shared_secret=testing123
+disable_pmksa_caching=1
+okc=0
+nas_identifier=
+eapol_key_index_workaround=1
 ssid=${SSID}
 hw_mode=${HW_MODE}
 channel=${CHANNEL}
 wpa=2
-wpa_passphrase=${WPA_PASSPHRASE}
-wpa_key_mgmt=WPA-PSK
+wpa_group_rekey=2000
+auth_algs=1
+wpa_key_mgmt=WPA-EAP
 # TKIP is no secure anymore
 #wpa_pairwise=TKIP CCMP
 wpa_pairwise=CCMP
@@ -54,16 +55,16 @@ EOF
 fi
 
 # Setup interface and restart DHCP service
-ip link set ${INTERFACE} up
-ip addr flush dev ${INTERFACE}
-ip addr add ${AP_ADDR}/24 dev ${INTERFACE}
+ip link set "${INTERFACE} up"
+ip addr flush dev "${INTERFACE}"
+ip addr add ${AP_ADDR}/24 dev "${INTERFACE}"
 
 # NAT settings
 echo "NAT settings ip_dynaddr, ip_forward"
 
 
 for i in ip_dynaddr ip_forward ; do
-  if [ $(cat /proc/sys/net/ipv4/$i) -eq 1 ] ; then
+  if [ "$(cat /proc/sys/net/ipv4/$i)" -eq 1 ] ; then
     echo $i already 1
   else
     echo "1" > /proc/sys/net/ipv4/$i
@@ -79,14 +80,14 @@ if [ "${OUTGOINGS}" ] ; then
    do
       echo "Setting iptables for outgoing traffics on ${int}..."
 
-      iptables -t nat -D POSTROUTING -s ${SUBNET}/24 -o ${int} -j MASQUERADE > /dev/null 2>&1 || true
-      iptables -t nat -A POSTROUTING -s ${SUBNET}/24 -o ${int} -j MASQUERADE
+      iptables -t nat -D POSTROUTING -s ${SUBNET}/24 -o "${int}" -j MASQUERADE > /dev/null 2>&1 || true
+      iptables -t nat -A POSTROUTING -s ${SUBNET}/24 -o "${int}" -j MASQUERADE
 
-      iptables -D FORWARD -i ${int} -o ${INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
-      iptables -A FORWARD -i ${int} -o ${INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+      iptables -D FORWARD -i "${int}" -o "${INTERFACE}" -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
+      iptables -A FORWARD -i "${int}" -o "${INTERFACE}" -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-      iptables -D FORWARD -i ${INTERFACE} -o ${int} -j ACCEPT > /dev/null 2>&1 || true
-      iptables -A FORWARD -i ${INTERFACE} -o ${int} -j ACCEPT
+      iptables -D FORWARD -i "${INTERFACE}" -o "${int}" -j ACCEPT > /dev/null 2>&1 || true
+      iptables -A FORWARD -i "${INTERFACE}" -o "${int}" -j ACCEPT
    done
 else
    echo "Setting iptables for outgoing traffics on all interfaces..."
@@ -94,11 +95,11 @@ else
    iptables -t nat -D POSTROUTING -s ${SUBNET}/24 -j MASQUERADE > /dev/null 2>&1 || true
    iptables -t nat -A POSTROUTING -s ${SUBNET}/24 -j MASQUERADE
 
-   iptables -D FORWARD -o ${INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
-   iptables -A FORWARD -o ${INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+   iptables -D FORWARD -o "${INTERFACE}" -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
+   iptables -A FORWARD -o "${INTERFACE}" -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-   iptables -D FORWARD -i ${INTERFACE} -j ACCEPT > /dev/null 2>&1 || true
-   iptables -A FORWARD -i ${INTERFACE} -j ACCEPT
+   iptables -D FORWARD -i "${INTERFACE}" -j ACCEPT > /dev/null 2>&1 || true
+   iptables -A FORWARD -i "${INTERFACE}" -j ACCEPT
 fi
 
 echo "Configuring DHCP server .."
@@ -113,7 +114,7 @@ subnet ${SUBNET} netmask 255.255.255.0 {
 EOF
 
 echo "Starting DHCP server .."
-dhcpd ${INTERFACE}
+dhcpd "${INTERFACE}"
 
 # Capture external docker signals
 trap 'true' SIGINT
@@ -133,18 +134,18 @@ if [ "${OUTGOINGS}" ] ; then
    do
       echo "Removing iptables for outgoing traffics on ${int}..."
 
-      iptables -t nat -D POSTROUTING -s ${SUBNET}/24 -o ${int} -j MASQUERADE > /dev/null 2>&1 || true
+      iptables -t nat -D POSTROUTING -s ${SUBNET}/24 -o "${int}" -j MASQUERADE > /dev/null 2>&1 || true
 
-      iptables -D FORWARD -i ${int} -o ${INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
+      iptables -D FORWARD -i "${int}" -o "${INTERFACE}" -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
 
-      iptables -D FORWARD -i ${INTERFACE} -o ${int} -j ACCEPT > /dev/null 2>&1 || true
+      iptables -D FORWARD -i "${INTERFACE}" -o "${int}" -j ACCEPT > /dev/null 2>&1 || true
    done
 else
    echo "Setting iptables for outgoing traffics on all interfaces..."
 
    iptables -t nat -D POSTROUTING -s ${SUBNET}/24 -j MASQUERADE > /dev/null 2>&1 || true
 
-   iptables -D FORWARD -o ${INTERFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
+   iptables -D FORWARD -o "${INTERFACE}" -m state --state RELATED,ESTABLISHED -j ACCEPT > /dev/null 2>&1 || true
 
-   iptables -D FORWARD -i ${INTERFACE} -j ACCEPT > /dev/null 2>&1 || true
+   iptables -D FORWARD -i "${INTERFACE}" -j ACCEPT > /dev/null 2>&1 || true
 fi
