@@ -1,10 +1,7 @@
-FROM jonaskello/rpi-alpine-scratch-qemu
+FROM ubuntu:24.04
 
-MAINTAINER Sergio R. <sdelrio@users.noreply.github.com>
+RUN apt update && apt install hostapd
 
-ENV VERSION 0.31
-
-RUN apk update && apk add bash hostapd iptables dhcp && rm -rf /var/cache/apk/*
 RUN echo "" > /var/lib/dhcp/dhcpd.leases
 ADD wlanstart.sh /bin/wlanstart.sh
 
